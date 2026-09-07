@@ -1,5 +1,9 @@
+import logging
+
 from bot_init import bot, ss14_db
 from disnake.ext import tasks
+
+logger = logging.getLogger(__name__)
 
 from dataConfig import (
     DB_SIZE_LIMIT_GB,
@@ -40,13 +44,14 @@ async def send_alert(body: str):
         user = bot.get_user(MY_DS_ID) or await bot.fetch_user(MY_DS_ID)
         await user.send(body)
     except Exception as e:
-        print(f"[db_size_monitor] Канал не найден, и в ЛС отправить не удалось: {e}")
+        logger.error("Канал алертов не найден, и в ЛС отправить не удалось: %s", e)
 
 
 @tasks.loop(minutes=DB_SIZE_CHECK_INTERVAL_MIN)
 async def db_size_monitor():
     databases = await ss14_db.get_databases_size()
     if databases is None:
+        logger.warning("Не удалось получить размеры БД, проверка пропущена")
         return
 
     limit_bytes = DB_SIZE_LIMIT_GB * GB
@@ -60,7 +65,7 @@ async def db_size_monitor():
 
         lines = [f"• {datname}: {fmt_size(d['size'])}"]
         for t in (d.get('tables') or []):
-            tsize = fmt_size(t['size']) if t['size'] is not None else "—"
+            tsize = fmt_size(t['size']) if t['size'] is not None else "-"
             lines.append(f"   └ {t['name']}: {tsize}")
         breakdown = "\n".join(lines)
 
@@ -70,6 +75,7 @@ async def db_size_monitor():
             f"{breakdown}"
         )
 
+        logger.warning("admin_log в базе %s превысил порог: %s", datname, fmt_size(log_size))
         await send_alert(body)
 
 
